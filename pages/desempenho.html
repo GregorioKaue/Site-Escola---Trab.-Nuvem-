@@ -230,63 +230,25 @@
   EduConnect © 2026 — Portal Digital Escolar
 </footer>
 
+<script src="api.js"></script>
 <script>
   // ---------- Sessão: usa o usuário gravado pela página de login ----------
-  const usuario = JSON.parse(sessionStorage.getItem("usuarioLogado"));
-  if (!usuario) {
-    window.location.href = "login.html"; // Sem login, volta para a tela de entrada
-  }
+  const usuario = exigirSessao("aluno"); // Sem login válido, volta para a tela de entrada
+  if (!usuario) throw new Error("Sem login: redirecionando para a tela de entrada.");
 
-  // ---------- Dados de demonstração ----------
-  // Em um sistema real, tudo isto viria do servidor da escola.
+  // ---------- Dados vindos da API (GET /api/aluno/desempenho) ----------
   // Meses letivos (julho é recesso): posições 0–4 = 1º semestre, 5–9 = 2º semestre.
-  const MESES = ["Fev", "Mar", "Abr", "Mai", "Jun", "Ago", "Set", "Out", "Nov", "Dez"];
-  const DISC = ["Português", "Matemática", "História", "Ciências"];
-  const AULAS_MES = { "Português": 16, "Matemática": 16, "História": 8, "Ciências": 8 }; // Aulas por mês
+  let MESES = [];       // ["Fev", ..., "Dez"]
+  let DISC = [];        // Nomes das disciplinas
+  let AULAS_MES = {};   // Aulas por mês de cada disciplina
+  let DADOS = {};       // { ano: { notas: { disciplina: [10 meses] }, faltas: { ... } } }  (null = mês sem lançamento)
+  let DOCUMENTOS = [];  // [{ nome, situacao: "entregue" | "analise" | "pendente", data }]
 
-  // null = mês que ainda não aconteceu (sem nota e sem faltas registradas).
-  const DADOS = {
-    2025: {
-      notas: {
-        "Português":  [7.5, 8.0, 7.0, 8.5, 8.0, 7.5, 8.0, 9.0, 8.5, 9.0],
-        "Matemática": [6.0, 6.5, 7.0, 6.0, 5.5, 6.5, 7.0, 6.5, 7.5, 7.0],
-        "História":   [8.5, 9.0, 8.0, 8.5, 9.0, 8.0, 8.5, 9.0, 8.5, 9.0],
-        "Ciências":   [5.5, 6.0, 5.0, 6.5, 6.0, 5.5, 6.5, 7.0, 6.0, 6.5]
-      },
-      faltas: {
-        "Português":  [0, 1, 0, 2, 1, 0, 1, 0, 2, 1],
-        "Matemática": [1, 0, 2, 2, 0, 1, 1, 0, 2, 2],
-        "História":   [0, 0, 1, 0, 1, 0, 0, 1, 0, 0],
-        "Ciências":   [1, 0, 1, 2, 2, 1, 0, 1, 1, 2]
-      }
-    },
-    2026: {
-      notas: {
-        "Português":  [8.0, 7.5, 8.5, 9.0, 8.0, 8.5, 9.0, null, null, null],
-        "Matemática": [6.5, 7.0, 6.0, 5.5, 6.5, 7.0, 6.0, null, null, null],
-        "História":   [9.0, 8.5, 8.0, 9.0, 8.5, 8.0, 8.5, null, null, null],
-        "Ciências":   [5.0, 6.0, 5.5, 4.5, 5.5, 6.0, 5.0, null, null, null]
-      },
-      faltas: {
-        "Português":  [0, 0, 1, 0, 2, 1, 0, null, null, null],
-        "Matemática": [0, 1, 0, 1, 1, 0, 2, null, null, null],
-        "História":   [0, 0, 0, 1, 0, 0, 1, null, null, null],
-        "Ciências":   [1, 1, 0, 0, 2, 1, 0, null, null, null]
-      }
-    }
-  };
-
-  // Documentos exigidos pela escola. situacao: "entregue", "analise" ou "pendente".
-  const DOCUMENTOS = [
-    { nome: "Certidão de nascimento",       situacao: "entregue", data: "2026-02-03" },
-    { nome: "RG do aluno",                  situacao: "entregue", data: "2026-02-03" },
-    { nome: "CPF do aluno",                 situacao: "entregue", data: "2026-02-03" },
-    { nome: "Comprovante de residência",    situacao: "entregue", data: "2026-02-05" },
-    { nome: "Histórico escolar",            situacao: "entregue", data: "2026-02-10" },
-    { nome: "Cartão de vacinação",          situacao: "analise",  data: "2026-09-18" },
-    { nome: "Foto 3x4",                     situacao: "entregue", data: "2026-02-05" },
-    { nome: "Termo de autorização de imagem", situacao: "pendente", data: null }
-  ];
+  // Faixa no topo da página: "carregando" (a API gratuita pode levar ~1 min para acordar) ou mensagem de erro.
+  const faixaStatus = document.createElement("div");
+  faixaStatus.className = "alert alert-info";
+  faixaStatus.textContent = "Carregando seus dados... Se o servidor estava inativo, isso pode levar cerca de 1 minuto.";
+  document.querySelector("main").prepend(faixaStatus);
 
   // ---------- Funções auxiliares ----------
   // Média ignorando meses sem nota (null). Retorna null se não houver nenhuma.
@@ -322,21 +284,14 @@
   }
 
   // ---------- Estado da tela ----------
-  let ano = Math.max(...Object.keys(DADOS).map(Number)); // Começa no ano mais recente
-  let modo = "mes";                                       // Aba de notas ativa
+  let ano = null;   // Ano letivo selecionado (definido quando os dados chegam da API)
+  let modo = "mes"; // Aba de notas ativa
 
   // ---------- Cabeçalho ----------
   document.getElementById("detalhes").textContent =
     usuario.nome + " • " + usuario.turma + " • Matrícula " + usuario.matricula;
 
-  const seletorAno = document.getElementById("anoLetivo");
-  Object.keys(DADOS).sort().reverse().forEach(a => {
-    const op = document.createElement("option");
-    op.value = a;
-    op.textContent = a;
-    seletorAno.appendChild(op);
-  });
-  seletorAno.value = ano;
+  const seletorAno = document.getElementById("anoLetivo"); // Preenchido em iniciar()
 
   // ---------- Frequência ----------
   function renderFrequencia() {
@@ -368,9 +323,15 @@
       const meses = faltas[d].filter(n => n !== null);
       const aulas = meses.length * AULAS_MES[d];
       const f = meses.reduce((a, b) => a + b, 0);
-      const pct = (aulas - f) / aulas * 100;
       const div = document.createElement("div");
       div.className = "mb-3";
+      if (!aulas) { // Nenhum mês lançado ainda para esta disciplina
+        div.innerHTML = "<div class='d-flex justify-content-between'><span class='fw-semibold'>" + d +
+          "</span><small class='text-muted'>sem registros neste ano</small></div>";
+        bloco.appendChild(div);
+        return;
+      }
+      const pct = (aulas - f) / aulas * 100;
       div.innerHTML =
         "<div class='d-flex justify-content-between'><span class='fw-semibold'>" + d +
         "</span><small class='text-muted'>" + f + " faltas em " + aulas + " aulas</small></div>" +
@@ -379,6 +340,11 @@
     });
 
     // Cartão-resumo.
+    if (!totalAulas) { // Ano sem nenhum mês lançado
+      document.getElementById("resFreq").textContent = "—";
+      document.getElementById("resFreqTxt").textContent = "Nenhuma aula registrada neste ano";
+      return;
+    }
     const geral = (totalAulas - totalFaltas) / totalAulas * 100;
     document.getElementById("resFreq").textContent = geral.toFixed(1).replace(".", ",") + "%";
     document.getElementById("resFreqTxt").textContent =
@@ -473,7 +439,7 @@
     document.getElementById("resMedia").textContent = fmt(geralAno);
     document.getElementById("resMediaTxt").textContent =
       (encerrado ? "Ano letivo encerrado" : "Ano letivo em andamento") +
-      (geralAno >= 6 ? " — na média" : " — abaixo da média");
+      (geralAno === null ? " — sem notas lançadas" : (geralAno >= 6 ? " — na média" : " — abaixo da média"));
   }
 
   // ---------- Documentos ----------
@@ -528,14 +494,44 @@
   });
 
   document.getElementById("btnSair").addEventListener("click", () => {
-    sessionStorage.removeItem("usuarioLogado");
-    window.location.href = "login.html";
+    sairDaSessao("login.html"); // Apaga token e usuário da sessão e volta ao login
   });
 
-  // ---------- Primeira exibição ----------
-  renderFrequencia();
-  renderNotas();
-  renderDocumentos();
+  // ---------- Primeira exibição: busca tudo na API ----------
+  async function iniciar() {
+    try {
+      const r = await EduAPI.desempenho();
+      MESES = r.meses;
+      DISC = r.disciplinas;
+      AULAS_MES = r.aulasPorMes;
+      DADOS = r.dados;
+      DOCUMENTOS = r.documentos;
+
+      renderDocumentos();
+
+      const anos = Object.keys(DADOS).map(Number).sort((a, b) => b - a); // Do mais recente para o mais antigo
+      if (!anos.length) { // Aluno sem nenhum ano letivo cadastrado
+        faixaStatus.textContent = "Ainda não há notas ou faltas lançadas para você.";
+        return;
+      }
+      anos.forEach(a => {
+        const op = document.createElement("option");
+        op.value = a;
+        op.textContent = a;
+        seletorAno.appendChild(op);
+      });
+      ano = anos[0]; // Começa no ano mais recente
+      seletorAno.value = ano;
+
+      renderFrequencia();
+      renderNotas();
+      faixaStatus.remove(); // Tudo carregado: some o aviso
+    } catch (e) {
+      faixaStatus.className = "alert alert-danger";
+      faixaStatus.textContent = e.message;
+    }
+  }
+  iniciar();
 </script>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js">
