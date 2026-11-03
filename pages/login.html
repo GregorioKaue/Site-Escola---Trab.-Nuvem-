@@ -129,13 +129,14 @@
   EduConnect © 2026 — Portal Digital Escolar
 </footer>
 
+<script src="api.js"></script>
 <script>
   const form = document.getElementById("formLogin");
   const email = document.getElementById("email");
   const senha = document.getElementById("senha");
 
   // Valida os campos e acessa o sistema.
-  form.addEventListener("submit", evento => {
+  form.addEventListener("submit", async evento => {
     evento.preventDefault();
 
     const emailValido = email.checkValidity() && email.value.trim() !== "";
@@ -146,34 +147,28 @@
 
     if (!emailValido || !senhaValida) return;
 
-    // Usuário de demonstração. Em um sistema real, a conferência
-    // seria feita no servidor da escola.
-    const usuarioDemo = {
-      email: "aluno@escola.com.br",   // E-mail correto
-      senha: "123456",                // Senha correta
-      nome: "Maria Souza",            // Nome exibido no perfil
-      turma: "8º Ano B",              // Turma exibida no perfil
-      matricula: "2026-0142"          // Matrícula exibida no perfil
-    };
-
     const erro = document.getElementById("erroLogin"); // Aviso de erro
+    const botao = form.querySelector("button[type=submit]");
+    const textoBotao = botao.textContent;
+    botao.disabled = true;               // Evita clique duplo enquanto a API responde
+    botao.textContent = "Entrando...";
+    erro.hidden = true;
 
-    // Compara o que foi digitado com os dados corretos.
-    if (email.value.trim().toLowerCase() === usuarioDemo.email &&
-        senha.value === usuarioDemo.senha) {
-      erro.hidden = true; // Esconde o aviso de erro
-      // Guarda os dados do usuário (sem a senha) na sessão do navegador.
-      sessionStorage.setItem("usuarioLogado", JSON.stringify({
-        email: usuarioDemo.email,
-        nome: usuarioDemo.nome,
-        turma: usuarioDemo.turma,
-        matricula: usuarioDemo.matricula
-      }));
+    try {
+      // A conferência da senha é feita no servidor (API no Render + banco no AlwaysData).
+      const r = await EduAPI.loginAluno(email.value.trim(), senha.value);
+      sessionStorage.clear();                                            // Remove qualquer login anterior
+      sessionStorage.setItem("token", r.token);                          // Token JWT enviado nas próximas chamadas
+      sessionStorage.setItem("usuarioLogado", JSON.stringify(r.usuario)); // { email, nome, turma, matricula }
       window.location.href = "perfil.html"; // Abre a página de perfil
-    } else {
-      erro.hidden = false; // Mostra "E-mail ou senha incorretos"
+    } catch (e) {
+      erro.textContent = e.message; // "E-mail ou senha incorretos." ou erro de conexão
+      erro.hidden = false;
       senha.value = "";    // Limpa a senha digitada
       senha.focus();       // Coloca o cursor no campo de senha
+    } finally {
+      botao.disabled = false;
+      botao.textContent = textoBotao;
     }
   });
 
