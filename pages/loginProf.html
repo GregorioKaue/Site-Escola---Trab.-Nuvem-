@@ -130,10 +130,15 @@
 </footer>
 
 <script src="api.js"></script>
-<script>
+  
+  
+  
+  <script>
   const form = document.getElementById("formLogin");
   const email = document.getElementById("email");
   const senha = document.getElementById("senha");
+const API_BASE_URL = "https://trab-nuvem.onrender.com";
+const LOGIN_ENDPOINT = `${API_BASE_URL}/api/auth/login`;
 
   // Valida os campos e acessa o sistema.
   form.addEventListener("submit", async evento => {
@@ -156,7 +161,34 @@
 
     try {
       // A conferência da senha é feita no servidor (API no Render + banco no AlwaysData).
-      const r = await EduAPI.loginProfessor(email.value.trim(), senha.value);
+     // const r = await EduAPI.loginProfessor(email.value.trim(), senha.value);  ---  
+const resposta = await fetch(LOGIN_ENDPOINT, {
+    method: "POST",
+    headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+    },
+    body: JSON.stringify({
+        email: email.value.trim(),
+        senha: senha.value
+    })
+});
+
+const r = await resposta.json();
+
+if (!resposta.ok) {
+    throw new Error(r.message || r.mensagem || "E-mail ou senha incorretos.");
+}
+
+if (!r.token || !r.professor) {
+    throw new Error("A API não retornou o token ou os dados do professor.");
+}
+
+sessionStorage.setItem("token", r.token);
+sessionStorage.setItem("professorLogado", JSON.stringify(r.professor));
+
+window.location.href = "painel-professor.html";
+      
       sessionStorage.clear();                                                // Remove qualquer login anterior
       sessionStorage.setItem("token", r.token);                              // Token JWT enviado nas próximas chamadas
       sessionStorage.setItem("professorLogado", JSON.stringify(r.professor)); // { nome, email }
