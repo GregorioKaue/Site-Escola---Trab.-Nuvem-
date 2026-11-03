@@ -121,6 +121,7 @@
   EduConnect © 2026 — Portal Digital Escolar
 </footer>
 
+<script src="api.js"></script>
 <script>
   const form = document.getElementById("formRecuperar");
   const email = document.getElementById("email");
@@ -150,7 +151,7 @@
     return true;
   }
 
-  form.addEventListener("submit", evento => {
+  form.addEventListener("submit", async evento => {
     evento.preventDefault();
     sucesso.hidden = true;
 
@@ -162,9 +163,21 @@
 
     if (!emailValido || !cpfOk) return;
 
-    // O envio real deve ser integrado ao sistema da escola.
-    sucesso.hidden = false;
-    form.reset();
+    const botao = form.querySelector("button[type=submit]");
+    botao.disabled = true; // Evita clique duplo enquanto a API responde
+    try {
+      // A API sempre responde igual (não revela se o e-mail/CPF existem) e envia o link por e-mail.
+      const r = await EduAPI.esqueciSenha(email.value.trim(), cpf.value);
+      sucesso.className = "alert alert-success mt-4 mb-0";
+      sucesso.textContent = r.mensagem;
+      form.reset();
+    } catch (e) {
+      sucesso.className = "alert alert-danger mt-4 mb-0";
+      sucesso.textContent = e.message;
+    } finally {
+      sucesso.hidden = false;
+      botao.disabled = false;
+    }
   });
 </script>
 
