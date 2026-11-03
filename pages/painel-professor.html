@@ -241,6 +241,10 @@
             <input class="form-control" id="fMatricula" required> <!-- Campo da matrícula -->
           </div>
         </div>
+        <div class="mt-3">
+          <label class="form-label" for="fCpf">CPF <span class="text-muted small">(opcional; necessário para recuperar a senha. Ao editar, deixe em branco para manter o atual)</span></label>
+          <input class="form-control" id="fCpf" inputmode="numeric" maxlength="14" placeholder="000.000.000-00" autocomplete="off"> <!-- Campo do CPF -->
+        </div>
         <div class="text-danger small mt-3 d-none" id="erroForm"></div> <!-- Mensagem de erro do formulário -->
       </div>
       <div class="modal-footer"> <!-- Rodapé da janela -->
@@ -248,6 +252,27 @@
         <button type="submit" class="btn btn-primary">Salvar aluno</button> <!-- Envia o formulário -->
       </div>
     </form>
+  </div>
+</div>
+
+<!-- ===================== JANELA (MODAL): SENHA PROVISÓRIA DO NOVO ALUNO ===================== -->
+<div class="modal fade" id="modalSenha" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Aluno cadastrado</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-2"><strong id="senhaAluno"></strong> já pode entrar no portal com o e-mail cadastrado e a senha provisória abaixo.</p>
+        <input class="form-control form-control-lg text-center fw-bold" id="senhaProvisoria" readonly>
+        <p class="text-danger small mt-3 mb-0">Anote ou copie agora: por segurança, esta senha não será exibida novamente.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" id="btnCopiarSenha">Copiar</button>
+        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Entendi</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -264,30 +289,26 @@
 <!-- O Bootstrap precisa carregar antes do nosso script, pois usamos modal e toast -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
+<script src="api.js"></script>
 <script> // Início do JavaScript da página
   // ---------- Sessão do professor ----------
-  // A página de login deve gravar { nome, email } em sessionStorage["professorLogado"].
-  let professor = JSON.parse(sessionStorage.getItem("professorLogado")); // Lê o professor logado (texto JSON -> objeto)
-  if (!professor) { // Se ninguém fez login...
-    // Para a demonstração funcionar sozinha, usamos um professor de exemplo.
-    // Em produção, troque esta linha por: window.location.href = "login.html";
-    professor = { nome: "Professor(a) Demonstração", email: "professor@educonnect.com" };
-  }
+  // loginProf.html grava { nome, email } em sessionStorage["professorLogado"] e o token em sessionStorage["token"].
+  const professor = exigirSessao("professor"); // Sem login válido, volta para a tela de login do professor
+  if (!professor) throw new Error("Sem login: redirecionando para a tela de entrada.");
   document.getElementById("nomeProf").textContent = professor.nome; // Mostra o nome na barra superior
 
   // ---------- Constantes (iguais às do perfil.html) ----------
   const MESES = ["Fev", "Mar", "Abr", "Mai", "Jun", "Ago", "Set", "Out", "Nov", "Dez"]; // Meses letivos (julho é recesso)
-  const DISC = ["Português", "Matemática", "História", "Ciências"]; // Disciplinas
-  const AULAS_MES = { "Português": 16, "Matemática": 16, "História": 8, "Ciências": 8 }; // Aulas por mês de cada disciplina
+  // Valores iniciais; são substituídos pelo que o banco devolve (disciplinas e aulas por mês) ao abrir um aluno.
+  let DISC = ["Português", "Matemática", "História", "Ciências"]; // Disciplinas
+  let AULAS_MES = { "Português": 16, "Matemática": 16, "História": 8, "Ciências": 8 }; // Aulas por mês de cada disciplina
   const N_BIM = 3; // Quantidade de bimestres exibidos no perfil
-  const DOC_PADRAO = [ // Documentos exigidos pela escola
-    "Certidão de nascimento", "RG do aluno", "CPF do aluno", "Comprovante de residência",
-    "Histórico escolar", "Cartão de vacinação", "Foto 3x4", "Termo de autorização de imagem"
-  ];
 
-  // ---------- "Banco de dados" do navegador (demonstração) ----------
-  // O perfil.html lê esta mesma chave. Em produção, vira chamadas à API/MySQL.
-  const CHAVE = "educonnect_banco"; // Nome sob o qual os dados ficam no localStorage
+  // ---------- Dados (vêm da API e ficam em memória enquanto a página está aberta) ----------
+  // banco.anos = [2025, 2026]
+  // banco.alunos = [{ id, nome, email, turma, matricula, anos: { ano: { bim, notas, faltas } }, documentos: [...] | null }]
+  // Notas, faltas e documentos de cada aluno só são buscados quando o professor o seleciona (ou troca o ano).
+  let banco = { anos: [], alunos: [] };
 
   const vazio = n => Array(n).fill(null); // Cria uma lista de n posições com null (= sem lançamento)
 
@@ -301,73 +322,9 @@
     return o; // Devolve a estrutura pronta
   }
 
-  function novosDocs() { // Lista de documentos, todos pendentes
-    return DOC_PADRAO.map(nome => ({ nome, situacao: "pendente", data: null }));
-  }
-
-  function semente() { // Dados de exemplo (os mesmos números do perfil.html)
-    const ana = { // Aluna de exemplo
-      id: 1, nome: "Ana Souza", email: "ana@aluno.educonnect.com", // Identificação e e-mail
-      turma: "8º Ano A", matricula: "2026001",                      // Turma e matrícula
-      anos: { "2025": novoAno(), "2026": novoAno() },               // Anos letivos vazios
-      documentos: novosDocs()                                       // Documentos pendentes
-    };
-    ana.anos["2025"].notas = { // Notas mensais de 2025
-      "Português":  [7.5, 8.0, 7.0, 8.5, 8.0, 7.5, 8.0, 9.0, 8.5, 9.0],
-      "Matemática": [6.0, 6.5, 7.0, 6.0, 5.5, 6.5, 7.0, 6.5, 7.5, 7.0],
-      "História":   [8.5, 9.0, 8.0, 8.5, 9.0, 8.0, 8.5, 9.0, 8.5, 9.0],
-      "Ciências":   [5.5, 6.0, 5.0, 6.5, 6.0, 5.5, 6.5, 7.0, 6.0, 6.5]
-    };
-    ana.anos["2025"].faltas = { // Faltas mensais de 2025
-      "Português":  [0, 1, 0, 2, 1, 0, 1, 0, 2, 1],
-      "Matemática": [1, 0, 2, 2, 0, 1, 1, 0, 2, 2],
-      "História":   [0, 0, 1, 0, 1, 0, 0, 1, 0, 0],
-      "Ciências":   [1, 0, 1, 2, 2, 1, 0, 1, 1, 2]
-    };
-    ana.anos["2026"].notas = { // Notas mensais de 2026 (null = mês que ainda não aconteceu)
-      "Português":  [8.0, 7.5, 8.5, 9.0, 8.0, 8.5, 9.0, null, null, null],
-      "Matemática": [6.5, 7.0, 6.0, 5.5, 6.5, 7.0, 6.0, null, null, null],
-      "História":   [9.0, 8.5, 8.0, 9.0, 8.5, 8.0, 8.5, null, null, null],
-      "Ciências":   [5.0, 6.0, 5.5, 4.5, 5.5, 6.0, 5.0, null, null, null]
-    };
-    ana.anos["2026"].faltas = { // Faltas mensais de 2026
-      "Português":  [0, 0, 1, 0, 2, 1, 0, null, null, null],
-      "Matemática": [0, 1, 0, 1, 1, 0, 2, null, null, null],
-      "História":   [0, 0, 0, 1, 0, 0, 1, null, null, null],
-      "Ciências":   [1, 1, 0, 0, 2, 1, 0, null, null, null]
-    };
-    ana.anos["2026"].bim = { // Notas bimestrais de 2026
-      "Português": [8.0, 7.5, 9.0], "Matemática": [6.5, 7.0, 5.5],
-      "História": [9.0, 8.5, 8.0],  "Ciências": [5.0, 6.0, 4.5]
-    };
-    const datas = ["2026-02-03", "2026-02-03", "2026-02-03", "2026-02-05", "2026-02-10", "2026-09-18", "2026-02-05", null]; // Datas de entrega
-    const sit = ["entregue", "entregue", "entregue", "entregue", "entregue", "analise", "entregue", "pendente"]; // Situações
-    ana.documentos.forEach((d, i) => { d.situacao = sit[i]; d.data = datas[i]; }); // Aplica situação e data a cada documento
-
-    const bruno = { // Segundo aluno de exemplo, sem lançamentos
-      id: 2, nome: "Bruno Lima", email: "bruno@aluno.educonnect.com",
-      turma: "8º Ano A", matricula: "2026002",
-      anos: { "2025": novoAno(), "2026": novoAno() }, documentos: novosDocs()
-    };
-    return { anos: [2025, 2026], alunos: [ana, bruno] }; // Devolve o banco completo
-  }
-
-  function carregar() { // Lê o banco do localStorage
-    try { // try/catch evita erro se o dado estiver corrompido
-      const b = JSON.parse(localStorage.getItem(CHAVE)); // Converte o texto salvo em objeto
-      if (b && Array.isArray(b.alunos) && Array.isArray(b.anos)) return b; // Usa o banco se estiver válido
-    } catch (e) { /* dado corrompido: recomeça com o exemplo */ }
-    return semente(); // Sem dados válidos: usa o exemplo
-  }
-
-  function gravar() { localStorage.setItem(CHAVE, JSON.stringify(banco)); } // Salva o banco como texto JSON
-
-  let banco = carregar(); // Banco em memória
-  gravar();               // Garante que o exemplo seja salvo na primeira visita
-
   // ---------- Estado da tela ----------
-  let ano = Math.max(...banco.anos); // Começa no ano letivo mais recente
-  let idSel = null;                  // Id do aluno selecionado (null = nenhum)
+  let ano = new Date().getFullYear(); // Ano letivo selecionado (vira o mais recente cadastrado quando a API responde)
+  let idSel = null;                   // Id do aluno selecionado (null = nenhum)
 
   // ---------- Funções auxiliares ----------
   const $ = id => document.getElementById(id); // Atalho para buscar um elemento pelo id
@@ -381,6 +338,34 @@
   }
 
   const alunoAtual = () => banco.alunos.find(a => a.id === idSel) || null; // Devolve o aluno selecionado
+
+  // Busca na API as notas/faltas do ano selecionado e os documentos do aluno (só se ainda não estiverem em memória).
+  async function carregarDados(a) {
+    if (!a || (a.anos[ano] && a.documentos)) return; // Nada a buscar
+    const r = await EduAPI.lancamentos(a.id, ano); // { bim, notas, faltas, documentos, aulasPorMes }
+    DISC = Object.keys(r.aulasPorMes); // Disciplinas e aulas por mês, exatamente como estão no banco
+    AULAS_MES = r.aulasPorMes;
+    a.anos[ano] = { bim: r.bim, notas: r.notas, faltas: r.faltas };
+    a.documentos = r.documentos;
+  }
+
+  // Seleciona o aluno: busca os dados dele na API e só então desenha o editor.
+  async function selecionarAluno(id) {
+    idSel = id;
+    renderLista(); // Destaca o aluno na lista na mesma hora
+    $("editorVazio").classList.add("d-none");
+    $("editor").classList.add("d-none"); // Esconde o editor anterior enquanto os dados do novo aluno carregam
+    try {
+      await carregarDados(alunoAtual());
+    } catch (e) {
+      idSel = null; // Não abre o editor sem dados (salvar campos vazios apagaria as notas do banco)
+      renderLista();
+      renderEditor();
+      aviso(e.message, "danger");
+      return;
+    }
+    if (idSel === id) renderEditor(); // Só desenha se o professor não trocou de aluno nesse meio-tempo
+  }
 
   function dadosAno(a) { // Devolve os dados do ano selecionado, criando se não existirem
     if (!a.anos[ano]) a.anos[ano] = novoAno();
@@ -432,7 +417,7 @@
     const filtrados = banco.alunos
       .filter(a => (turma === "todas" || a.turma === turma) &&  // Confere a turma
                    (a.nome.toLowerCase().includes(termo) ||     // Confere o nome...
-                    a.matricula.toLowerCase().includes(termo))) // ...ou a matrícula
+                    String(a.matricula).toLowerCase().includes(termo))) // ...ou a matrícula
       .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));   // Ordem alfabética em português
 
     if (!filtrados.length) { // Nenhum aluno encontrado
@@ -445,7 +430,7 @@
       b.className = "list-group-item list-group-item-action aluno-item" + (a.id === idSel ? " active" : ""); // Destaca o selecionado
       b.innerHTML = "<div class='fw-semibold'>" + esc(a.nome) + "</div>" + // Nome em destaque
                     "<small class='text-muted'>" + esc(a.turma) + " • Matrícula " + esc(a.matricula) + "</small>"; // Turma e matrícula
-      b.addEventListener("click", () => { idSel = a.id; renderLista(); renderEditor(); }); // Ao clicar, seleciona e atualiza a tela
+      b.addEventListener("click", () => selecionarAluno(a.id)); // Ao clicar, seleciona, busca os dados na API e atualiza a tela
       lista.appendChild(b); // Adiciona à lista
     });
   }
@@ -531,7 +516,7 @@
   }
 
   // ---------- Salvar lançamentos ----------
-  function salvarLancamentos() { // Executada ao clicar em "Salvar alterações"
+  async function salvarLancamentos() { // Executada ao clicar em "Salvar alterações"
     const a = alunoAtual();
     if (!a) return; // Sem aluno selecionado: nada a salvar
     const d = dadosAno(a);
@@ -558,27 +543,57 @@
       return;
     }
 
-    // 2) Aplica as alterações.
+    // 2) Aplica as alterações numa CÓPIA (só vira "oficial" depois que a API confirmar o salvamento).
+    const copia = structuredClone(d);
     alteracoes.forEach(x => { // Para cada valor válido...
-      const alvo = x.tipo === "bim" ? d.bim : (x.tipo === "nota" ? d.notas : d.faltas); // ...escolhe onde gravar
+      const alvo = x.tipo === "bim" ? copia.bim : (x.tipo === "nota" ? copia.notas : copia.faltas); // ...escolhe onde gravar
       alvo[x.disc][x.i] = x.v; // Grava o valor
     });
 
     // Documentos: preenche a data de hoje se foi recebido e está sem data; limpa se voltou a pendente.
+    const docs = structuredClone(a.documentos);
     document.querySelectorAll(".doc-sit").forEach(sel => { // Para cada seletor de situação...
-      const doc = a.documentos[+sel.dataset.i]; // ...encontra o documento
+      const doc = docs[+sel.dataset.i]; // ...encontra o documento
       const campoData = document.querySelector(".doc-data[data-i='" + sel.dataset.i + "']"); // ...e seu campo de data
       doc.situacao = sel.value; // Grava a situação
       doc.data = sel.value === "pendente" ? null : (campoData.value || hojeISO()); // Pendente = sem data; senão usa a data ou hoje
     });
 
-    gravar();        // Salva o banco inteiro
-    renderEditor();  // Redesenha o editor com os dados salvos
-    aviso("Informações de " + a.nome + " salvas. Já aparecem no perfil do aluno."); // Confirma ao professor
+    // 3) Envia tudo para a API (PUT .../lancamentos/:ano), que grava no banco numa única transação.
+    const botao = $("btnSalvar");
+    botao.disabled = true; // Evita clique duplo enquanto a API responde
+    try {
+      await EduAPI.salvarLancamentos(a.id, ano, { bim: copia.bim, notas: copia.notas, faltas: copia.faltas, documentos: docs });
+      a.anos[ano] = copia; // O banco confirmou: atualiza a memória
+      a.documentos = docs;
+      renderEditor();      // Redesenha o editor com os dados salvos
+      aviso("Informações de " + a.nome + " salvas. Já aparecem no perfil do aluno."); // Confirma ao professor
+    } catch (e) {
+      aviso(e.message, "danger"); // Nada foi gravado; os valores digitados continuam na tela
+    } finally {
+      botao.disabled = false;
+    }
   }
 
   // ---------- Cadastro / edição de aluno ----------
   const modalAluno = new bootstrap.Modal($("modalAluno")); // Controla a janela de cadastro
+  const modalSenha = new bootstrap.Modal($("modalSenha")); // Janela com a senha provisória do aluno recém-cadastrado
+
+  function mostrarSenha(aluno, senha) { // A API devolve a senha provisória uma única vez, no cadastro
+    $("senhaAluno").textContent = aluno.nome;
+    $("senhaProvisoria").value = senha;
+    modalSenha.show();
+  }
+
+  $("btnCopiarSenha").addEventListener("click", async () => { // Botão "Copiar"
+    try {
+      await navigator.clipboard.writeText($("senhaProvisoria").value);
+      aviso("Senha copiada.");
+    } catch (e) {
+      $("senhaProvisoria").select(); // Sem permissão de área de transferência: deixa selecionada para copiar à mão
+      aviso("Selecione e copie a senha manualmente.", "warning");
+    }
+  });
 
   function abrirModal(a) { // Abre a janela: vazia (novo) ou preenchida (editar)
     $("tituloModal").textContent = a ? "Editar aluno" : "Novo aluno"; // Título
@@ -587,52 +602,73 @@
     $("fEmail").value = a ? a.email : "";           // E-mail
     $("fTurma").value = a ? a.turma : ($("filtroTurma").value !== "todas" ? $("filtroTurma").value : ""); // Turma (sugere a do filtro)
     $("fMatricula").value = a ? a.matricula : "";   // Matrícula
+    $("fCpf").value = "";                           // CPF (ao editar, vazio = mantém o CPF atual)
     $("erroForm").classList.add("d-none");          // Esconde mensagem de erro
     modalAluno.show();                              // Mostra a janela
   }
 
-  $("formAluno").addEventListener("submit", e => { // Quando o formulário é enviado...
+  $("formAluno").addEventListener("submit", async e => { // Quando o formulário é enviado...
     e.preventDefault(); // ...impede o recarregamento da página
     const dados = { // Lê os campos
       nome: $("fNome").value.trim(), email: $("fEmail").value.trim(),
       turma: $("fTurma").value.trim(), matricula: $("fMatricula").value.trim()
     };
+    const cpf = $("fCpf").value.replace(/\D/g, ""); // CPF opcional (a API valida os dígitos)
+    if (cpf) dados.cpf = cpf;
     const id = $("fId").value ? Number($("fId").value) : null; // Id do aluno (null = novo)
     const erro = $("erroForm");
     erro.classList.remove("d-none"); // Prepara a área de erro
 
     if (!dados.nome || !dados.email || !dados.turma || !dados.matricula) { erro.textContent = "Preencha todos os campos."; return; } // Campos obrigatórios
     if (!/^\S+@\S+\.\S+$/.test(dados.email)) { erro.textContent = "Informe um e-mail válido."; return; } // Formato do e-mail
-    if (banco.alunos.some(a => a.matricula === dados.matricula && a.id !== id)) { erro.textContent = "Já existe um aluno com esta matrícula."; return; } // Matrícula única
+    if (banco.alunos.some(a => String(a.matricula) === dados.matricula && a.id !== id)) { erro.textContent = "Já existe um aluno com esta matrícula."; return; } // Matrícula única
     erro.classList.add("d-none"); // Tudo certo: esconde o erro
 
-    if (id) { // Editando um aluno existente
-      Object.assign(banco.alunos.find(a => a.id === id), dados); // Atualiza os dados
-    } else { // Cadastrando um novo aluno
-      const novoId = banco.alunos.reduce((m, a) => Math.max(m, a.id), 0) + 1; // Próximo id livre
-      const novo = { id: novoId, ...dados, anos: {}, documentos: novosDocs() }; // Cria o aluno
-      banco.anos.forEach(y => { novo.anos[y] = novoAno(); }); // Cria os anos letivos vazios
-      banco.alunos.push(novo); // Adiciona ao banco
-      idSel = novoId;          // Já seleciona o novo aluno
+    const botao = $("formAluno").querySelector("button[type=submit]");
+    botao.disabled = true; // Evita clique duplo enquanto a API responde
+    try {
+      if (id) { // Editando um aluno existente
+        const r = await EduAPI.editarAluno(id, dados); // PUT /api/professor/alunos/:id
+        Object.assign(banco.alunos.find(a => a.id === id), r.aluno); // Atualiza os dados em memória
+        modalAluno.hide();   // Fecha a janela
+        renderFiltroTurma(); // Atualiza o filtro (pode haver turma nova)
+        renderLista();       // Atualiza a lista
+        if (idSel === id) renderEditor(); // Atualiza o cabeçalho do editor
+      } else { // Cadastrando um novo aluno
+        const r = await EduAPI.novoAluno(dados); // POST /api/professor/alunos
+        const novo = { ...r.aluno, anos: {}, documentos: null }; // Notas e documentos são buscados ao selecionar
+        banco.alunos.push(novo); // Adiciona à lista
+        if (r.senhaProvisoria) { // Sem senha informada, a API gera uma e a mostra só desta vez
+          $("modalAluno").addEventListener("hidden.bs.modal", () => mostrarSenha(novo, r.senhaProvisoria), { once: true });
+        }
+        modalAluno.hide();   // Fecha a janela
+        renderFiltroTurma(); // Atualiza o filtro (pode haver turma nova)
+        selecionarAluno(novo.id); // Já abre o novo aluno
+      }
+      aviso("Aluno salvo com sucesso."); // Confirma
+    } catch (err) {
+      erro.textContent = err.message; // Ex.: matrícula/e-mail/CPF repetido ou CPF inválido
+      erro.classList.remove("d-none");
+    } finally {
+      botao.disabled = false;
     }
-    gravar();            // Salva
-    modalAluno.hide();   // Fecha a janela
-    renderFiltroTurma(); // Atualiza o filtro (pode haver turma nova)
-    renderLista();       // Atualiza a lista
-    renderEditor();      // Atualiza o editor
-    aviso("Aluno salvo com sucesso."); // Confirma
   });
 
   $("btnNovoAluno").addEventListener("click", () => abrirModal(null));           // Botão "+ Novo aluno"
   $("btnEditarAluno").addEventListener("click", () => abrirModal(alunoAtual())); // Botão "Editar dados"
 
-  $("btnExcluirAluno").addEventListener("click", () => { // Botão "Excluir"
+  $("btnExcluirAluno").addEventListener("click", async () => { // Botão "Excluir"
     const a = alunoAtual();
     if (!a) return;
     if (!confirm("Excluir " + a.nome + " e todas as notas, faltas e documentos registrados? Esta ação não pode ser desfeita.")) return; // Pede confirmação
-    banco.alunos = banco.alunos.filter(x => x.id !== a.id); // Remove o aluno
+    try {
+      await EduAPI.excluirAluno(a.id); // DELETE /api/professor/alunos/:id (o banco apaga notas, faltas e documentos em cascata)
+    } catch (e) {
+      aviso(e.message, "danger");
+      return;
+    }
+    banco.alunos = banco.alunos.filter(x => x.id !== a.id); // Remove o aluno da memória
     idSel = null;        // Nenhum aluno selecionado
-    gravar();            // Salva
     renderFiltroTurma(); // Atualiza filtro
     renderLista();       // Atualiza lista
     renderEditor();      // Mostra a mensagem de editor vazio
@@ -640,23 +676,46 @@
   });
 
   // ---------- Ano letivo ----------
-  $("btnNovoAno").addEventListener("click", () => { // Botão "+ Ano"
-    const resp = prompt("Informe o novo ano letivo (ex.: " + (Math.max(...banco.anos) + 1) + "):"); // Pergunta o ano
+  $("btnNovoAno").addEventListener("click", async () => { // Botão "+ Ano"
+    const resp = prompt("Informe o novo ano letivo (ex.: " + (banco.anos.length ? Math.max(...banco.anos) + 1 : new Date().getFullYear()) + "):"); // Pergunta o ano
     if (resp === null) return; // Cancelou
     const y = Number(resp);
     if (!Number.isInteger(y) || y < 2000 || y > 2100) { aviso("Ano inválido.", "danger"); return; } // Valida o ano
     if (banco.anos.includes(y)) { aviso("Este ano letivo já existe.", "warning"); return; } // Evita duplicar
+    try {
+      await EduAPI.novoAno(y); // POST /api/professor/anos
+    } catch (e) {
+      aviso(e.message, "danger"); // Ex.: ano já existe
+      return;
+    }
     banco.anos.push(y); // Adiciona o ano
-    banco.alunos.forEach(a => { a.anos[y] = novoAno(); }); // Cria o ano vazio para todos os alunos
+    const anterior = ano;
     ano = y;            // Seleciona o novo ano
-    gravar();           // Salva
     renderAnos();       // Atualiza o seletor
+    try {
+      await carregarDados(alunoAtual()); // O aluno aberto ganha a estrutura vazia do novo ano
+    } catch (e) {
+      ano = anterior; $("anoLetivo").value = anterior; // Não abre o ano sem dados carregados
+      aviso(e.message, "danger");
+      return;
+    }
     renderEditor();     // Atualiza o editor
     aviso("Ano letivo " + y + " criado.");
   });
 
   // ---------- Demais eventos ----------
-  $("anoLetivo").addEventListener("change", () => { ano = Number($("anoLetivo").value); renderEditor(); }); // Trocou o ano: redesenha
+  $("anoLetivo").addEventListener("change", async () => { // Trocou o ano: busca os dados do aluno nesse ano e redesenha
+    const anterior = ano;
+    ano = Number($("anoLetivo").value);
+    try {
+      await carregarDados(alunoAtual());
+    } catch (e) {
+      ano = anterior; $("anoLetivo").value = anterior; // Volta ao ano anterior (não abre o editor sem dados)
+      aviso(e.message, "danger");
+      return;
+    }
+    renderEditor();
+  });
   $("busca").addEventListener("input", renderLista);           // Digitou na busca: refiltra a lista
   $("filtroTurma").addEventListener("change", renderLista);    // Mudou a turma: refiltra a lista
   $("btnSalvar").addEventListener("click", salvarLancamentos); // Botão "Salvar alterações"
@@ -670,15 +729,28 @@
   });
 
   $("btnSair").addEventListener("click", () => { // Botão "Sair"
-    sessionStorage.removeItem("professorLogado"); // Apaga a sessão
-    window.location.href = "login.html";          // Volta ao login
+    sairDaSessao("loginProf.html"); // Apaga token e sessão e volta ao login do professor
   });
 
-  // ---------- Primeira exibição ----------
-  renderAnos();        // Preenche o seletor de ano
-  renderFiltroTurma(); // Preenche o filtro de turmas
-  renderLista();       // Desenha a lista de alunos
-  renderEditor();      // Mostra o editor (ou a mensagem de vazio)
+  // ---------- Primeira exibição: busca anos e alunos na API ----------
+  async function iniciar() {
+    $("listaAlunos").innerHTML = "<div class='text-muted small p-2'>Carregando alunos... (se o servidor estava inativo, pode levar cerca de 1 minuto)</div>";
+    try {
+      const [{ anos }, { alunos }] = await Promise.all([EduAPI.anos(), EduAPI.alunos()]);
+      banco.anos = anos;
+      banco.alunos = alunos.map(a => ({ ...a, anos: {}, documentos: null })); // Notas e documentos chegam ao selecionar o aluno
+      if (anos.length) ano = Math.max(...anos); // Começa no ano letivo mais recente
+    } catch (e) {
+      $("listaAlunos").innerHTML = "<div class='text-danger small p-2'>" + esc(e.message) + "</div>";
+      return;
+    }
+    renderAnos();        // Preenche o seletor de ano
+    renderFiltroTurma(); // Preenche o filtro de turmas
+    renderLista();       // Desenha a lista de alunos
+    renderEditor();      // Mostra a mensagem de editor vazio
+    if (!banco.anos.length) aviso("Nenhum ano letivo cadastrado. Use o botão \"+ Ano\" para criar o primeiro.", "warning");
+  }
+  iniciar();
 </script>
 </body>
 </html>
