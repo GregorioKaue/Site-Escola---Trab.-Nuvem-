@@ -264,23 +264,11 @@
   EduConnect © 2026 — Portal Digital Escolar <!-- Rodapé padrão -->
 </footer>
 
+<script src="api.js"></script>
 <script>
-  // Lê da sessão o usuário gravado pela página de login (texto JSON).
-  const usuario = JSON.parse(sessionStorage.getItem("usuarioLogado"));
-
-  // Se ninguém fez login, volta para a tela de login e interrompe o script.
-  if (!usuario) {
-    window.location.href = "login.html";
-  }
-
-  // ---------- Notas por bimestre (tabela original do perfil) ----------
-  // Notas de exemplo (demonstração). Em um sistema real viriam do servidor.
-  const notasBim = [
-    { disciplina: "Português",  bim: [8.0, 7.5, 9.0] },
-    { disciplina: "Matemática", bim: [6.5, 7.0, 5.5] },
-    { disciplina: "História",   bim: [9.0, 8.5, 8.0] },
-    { disciplina: "Ciências",   bim: [5.0, 6.0, 4.5] }
-  ];
+  // Lê da sessão o usuário gravado pela página de login. Sem login válido, volta para a tela de login.
+  const usuario = exigirSessao("aluno");
+  if (!usuario) throw new Error("Sem login: redirecionando para a tela de entrada.");
 
   // Imagem padrão (SVG embutido) usada quando o usuário não tem foto.
   const fotoPadrao = "data:image/svg+xml;utf8," + encodeURIComponent(
@@ -295,93 +283,67 @@
   document.getElementById("detalhes").textContent =
     usuario.email + " • " + usuario.turma + " • Matrícula " + usuario.matricula;
 
-  // Usa a foto salva pelo usuário ou a imagem padrão.
+  // Faixa no topo da página: "carregando" (a API gratuita pode levar ~1 min para acordar) ou mensagem de erro.
+  const faixaStatus = document.createElement("div");
+  faixaStatus.className = "alert alert-info";
+  faixaStatus.textContent = "Carregando seus dados... Se o servidor estava inativo, isso pode levar cerca de 1 minuto.";
+  document.querySelector("main").prepend(faixaStatus);
+
+  // Foto: começa com a imagem padrão e troca pela foto salva no banco quando a API responde.
   const foto = document.getElementById("foto");
-  foto.src = localStorage.getItem("fotoPerfil") || fotoPadrao;
+  foto.src = fotoPadrao;
 
   // Quando o usuário escolhe uma nova foto...
-  document.getElementById("novaFoto").addEventListener("change", evento => {
+  document.getElementById("novaFoto").addEventListener("change", async evento => {
     const arquivo = evento.target.files[0]; // Pega o primeiro arquivo escolhido
     if (!arquivo) return;                   // Sai se nada foi escolhido
-
-    const leitor = new FileReader();        // Objeto que lê o arquivo no navegador
-    leitor.onload = () => {                 // Executa quando a leitura termina
-      foto.src = leitor.result;             // Mostra a nova foto na tela
-      try {
-        localStorage.setItem("fotoPerfil", leitor.result); // Guarda para as próximas visitas
-      } catch (e) { /* Imagem grande demais para guardar: só mostra na tela */ }
-    };
-    leitor.readAsDataURL(arquivo);          // Converte a imagem em texto (base64)
-  });
-
-  // Monta a tabela de notas por bimestre.
-  const corpoBim = document.getElementById("tabelaNotas");
-  notasBim.forEach(item => {
-    // Soma as notas e divide pela quantidade para obter a média.
-    const mediaBim = item.bim.reduce((a, b) => a + b, 0) / item.bim.length;
-    const aprovado = mediaBim >= 6; // Média mínima para aprovação: 6
-
-    const linha = document.createElement("tr"); // Cria uma linha <tr>
-    // Preenche as células: disciplina, notas, média e selo de situação.
-    linha.innerHTML =
-      "<td class='fw-semibold'>" + item.disciplina + "</td>" +
-      item.bim.map(n => "<td>" + n.toFixed(1) + "</td>").join("") +
-      "<td class='fw-bold'>" + mediaBim.toFixed(1) + "</td>" +
-      "<td><span class='badge " + (aprovado ? "text-bg-success" : "text-bg-warning") + "'>" +
-      (aprovado ? "Aprovado" : "Recuperação") + "</span></td>";
-    corpoBim.appendChild(linha); // Adiciona a linha na tabela
-  });
-
-  // ---------- Dados de demonstração de frequência, notas mensais e documentos ----------
-  // Em um sistema real, tudo isto viria do servidor da escola.
-  // Meses letivos (julho é recesso): posições 0–4 = 1º semestre, 5–9 = 2º semestre.
-  const MESES = ["Fev", "Mar", "Abr", "Mai", "Jun", "Ago", "Set", "Out", "Nov", "Dez"];
-  const DISC = ["Português", "Matemática", "História", "Ciências"];
-  const AULAS_MES = { "Português": 16, "Matemática": 16, "História": 8, "Ciências": 8 }; // Aulas por mês
-
-  // null = mês que ainda não aconteceu (sem nota e sem faltas registradas).
-  const DADOS = {
-    2025: {
-      notas: {
-        "Português":  [7.5, 8.0, 7.0, 8.5, 8.0, 7.5, 8.0, 9.0, 8.5, 9.0],
-        "Matemática": [6.0, 6.5, 7.0, 6.0, 5.5, 6.5, 7.0, 6.5, 7.5, 7.0],
-        "História":   [8.5, 9.0, 8.0, 8.5, 9.0, 8.0, 8.5, 9.0, 8.5, 9.0],
-        "Ciências":   [5.5, 6.0, 5.0, 6.5, 6.0, 5.5, 6.5, 7.0, 6.0, 6.5]
-      },
-      faltas: {
-        "Português":  [0, 1, 0, 2, 1, 0, 1, 0, 2, 1],
-        "Matemática": [1, 0, 2, 2, 0, 1, 1, 0, 2, 2],
-        "História":   [0, 0, 1, 0, 1, 0, 0, 1, 0, 0],
-        "Ciências":   [1, 0, 1, 2, 2, 1, 0, 1, 1, 2]
-      }
-    },
-    2026: {
-      notas: {
-        "Português":  [8.0, 7.5, 8.5, 9.0, 8.0, 8.5, 9.0, null, null, null],
-        "Matemática": [6.5, 7.0, 6.0, 5.5, 6.5, 7.0, 6.0, null, null, null],
-        "História":   [9.0, 8.5, 8.0, 9.0, 8.5, 8.0, 8.5, null, null, null],
-        "Ciências":   [5.0, 6.0, 5.5, 4.5, 5.5, 6.0, 5.0, null, null, null]
-      },
-      faltas: {
-        "Português":  [0, 0, 1, 0, 2, 1, 0, null, null, null],
-        "Matemática": [0, 1, 0, 1, 1, 0, 2, null, null, null],
-        "História":   [0, 0, 0, 1, 0, 0, 1, null, null, null],
-        "Ciências":   [1, 1, 0, 0, 2, 1, 0, null, null, null]
-      }
+    try {
+      const dataUrl = await reduzirImagem(arquivo); // Reduz para ~400 px (a API aceita até ~1 MB)
+      await EduAPI.salvarFoto(dataUrl);             // Grava no banco
+      foto.src = dataUrl;                           // Mostra a nova foto na tela
+    } catch (e) {
+      alert(e.message);                             // Imagem inválida ou falha de conexão
+    } finally {
+      evento.target.value = "";                     // Permite escolher o mesmo arquivo de novo
     }
-  };
+  });
 
-  // Documentos exigidos pela escola. situacao: "entregue", "analise" ou "pendente".
-  const DOCUMENTOS = [
-    { nome: "Certidão de nascimento",         situacao: "entregue", data: "2026-02-03" },
-    { nome: "RG do aluno",                    situacao: "entregue", data: "2026-02-03" },
-    { nome: "CPF do aluno",                   situacao: "entregue", data: "2026-02-03" },
-    { nome: "Comprovante de residência",      situacao: "entregue", data: "2026-02-05" },
-    { nome: "Histórico escolar",              situacao: "entregue", data: "2026-02-10" },
-    { nome: "Cartão de vacinação",            situacao: "analise",  data: "2026-09-18" },
-    { nome: "Foto 3x4",                       situacao: "entregue", data: "2026-02-05" },
-    { nome: "Termo de autorização de imagem", situacao: "pendente", data: null }
-  ];
+  // ---------- Dados vindos da API (GET /api/aluno/desempenho) ----------
+  // Meses letivos (julho é recesso): posições 0–4 = 1º semestre, 5–9 = 2º semestre.
+  let MESES = [];       // ["Fev", ..., "Dez"]
+  let DISC = [];        // Nomes das disciplinas
+  let AULAS_MES = {};   // Aulas por mês de cada disciplina
+  let DADOS = {};       // { ano: { notas: { disciplina: [10 meses] }, faltas: { ... } } }  (null = mês sem lançamento)
+  let BIMESTRES = {};   // { ano: { disciplina: [nota1, nota2, nota3] } }  (null = ainda não lançada)
+  let DOCUMENTOS = [];  // [{ nome, situacao: "entregue" | "analise" | "pendente", data }]
+
+  // Monta a tabela de notas por bimestre do ano selecionado.
+  function renderBimestres() {
+    const corpoBim = document.getElementById("tabelaNotas");
+    corpoBim.replaceChildren();
+    DISC.forEach(disciplina => {
+      const bim = (BIMESTRES[ano] && BIMESTRES[ano][disciplina]) || [null, null, null];
+      const lancadas = bim.filter(n => n !== null);
+      // Média só das notas já lançadas (null se nenhuma).
+      const mediaBim = lancadas.length ? lancadas.reduce((a, b) => a + b, 0) / lancadas.length : null;
+      const aprovado = mediaBim !== null && mediaBim >= 6; // Média mínima para aprovação: 6
+
+      let selo = "<span class='badge text-bg-secondary'>Sem notas</span>";
+      if (mediaBim !== null) {
+        selo = "<span class='badge " + (aprovado ? "text-bg-success" : "text-bg-warning") + "'>" +
+               (aprovado ? "Aprovado" : "Recuperação") + "</span>";
+      }
+
+      const linha = document.createElement("tr"); // Cria uma linha <tr>
+      // Preenche as células: disciplina, notas, média e selo de situação.
+      linha.innerHTML =
+        "<td class='fw-semibold'>" + disciplina + "</td>" +
+        bim.map(n => "<td>" + (n === null ? "—" : n.toFixed(1)) + "</td>").join("") +
+        "<td class='fw-bold'>" + (mediaBim === null ? "—" : mediaBim.toFixed(1)) + "</td>" +
+        "<td>" + selo + "</td>";
+      corpoBim.appendChild(linha); // Adiciona a linha na tabela
+    });
+  }
 
   // ---------- Funções auxiliares ----------
   // Média ignorando meses sem nota (null). Retorna null se não houver nenhuma.
@@ -417,18 +379,9 @@
   }
 
   // ---------- Estado da tela ----------
-  let ano = Math.max(...Object.keys(DADOS).map(Number)); // Começa no ano mais recente
-  let modo = "mes";                                       // Aba de notas ativa
-
-  // Preenche o seletor de ano letivo.
-  const seletorAno = document.getElementById("anoLetivo");
-  Object.keys(DADOS).sort().reverse().forEach(a => {
-    const op = document.createElement("option");
-    op.value = a;
-    op.textContent = a;
-    seletorAno.appendChild(op);
-  });
-  seletorAno.value = ano;
+  let ano = null;   // Ano letivo selecionado (definido quando os dados chegam da API)
+  let modo = "mes"; // Aba de notas ativa
+  const seletorAno = document.getElementById("anoLetivo"); // Preenchido em iniciar()
 
   // ---------- Frequência ----------
   function renderFrequencia() {
@@ -460,9 +413,15 @@
       const meses = faltas[d].filter(n => n !== null);
       const aulas = meses.length * AULAS_MES[d];
       const f = meses.reduce((a, b) => a + b, 0);
-      const pct = (aulas - f) / aulas * 100;
       const div = document.createElement("div");
       div.className = "mb-3";
+      if (!aulas) { // Nenhum mês lançado ainda para esta disciplina
+        div.innerHTML = "<div class='d-flex justify-content-between'><span class='fw-semibold'>" + d +
+          "</span><small class='text-muted'>sem registros neste ano</small></div>";
+        bloco.appendChild(div);
+        return;
+      }
+      const pct = (aulas - f) / aulas * 100;
       div.innerHTML =
         "<div class='d-flex justify-content-between'><span class='fw-semibold'>" + d +
         "</span><small class='text-muted'>" + f + " faltas em " + aulas + " aulas</small></div>" +
@@ -471,6 +430,11 @@
     });
 
     // Cartão-resumo.
+    if (!totalAulas) { // Ano sem nenhum mês lançado
+      document.getElementById("resFreq").textContent = "—";
+      document.getElementById("resFreqTxt").textContent = "Nenhuma aula registrada neste ano";
+      return;
+    }
     const geral = (totalAulas - totalFaltas) / totalAulas * 100;
     document.getElementById("resFreq").textContent = geral.toFixed(1).replace(".", ",") + "%";
     document.getElementById("resFreqTxt").textContent =
@@ -565,7 +529,7 @@
     document.getElementById("resMedia").textContent = fmt(geralAno);
     document.getElementById("resMediaTxt").textContent =
       (encerrado ? "Ano letivo encerrado" : "Ano letivo em andamento") +
-      (geralAno >= 6 ? " — na média" : " — abaixo da média");
+      (geralAno === null ? " — sem notas lançadas" : (geralAno >= 6 ? " — na média" : " — abaixo da média"));
   }
 
   // ---------- Documentos ----------
@@ -606,6 +570,7 @@
     ano = Number(seletorAno.value);
     renderFrequencia();
     renderNotas();
+    renderBimestres();
   });
 
   document.getElementById("semestre").addEventListener("change", renderNotas);
@@ -621,14 +586,48 @@
 
   // Botão Sair: apaga a sessão e volta ao login.
   document.getElementById("btnSair").addEventListener("click", () => {
-    sessionStorage.removeItem("usuarioLogado"); // Remove o usuário da sessão
-    window.location.href = "login.html";        // Redireciona para o login
+    sairDaSessao("login.html"); // Apaga token e usuário da sessão e volta ao login
   });
 
-  // ---------- Primeira exibição ----------
-  renderFrequencia();
-  renderNotas();
-  renderDocumentos();
+  // ---------- Primeira exibição: busca tudo na API ----------
+  async function iniciar() {
+    try {
+      const [perfil, r] = await Promise.all([EduAPI.perfil(), EduAPI.desempenho()]);
+      if (perfil.foto) foto.src = perfil.foto; // Foto salva no banco
+
+      MESES = r.meses;
+      DISC = r.disciplinas;
+      AULAS_MES = r.aulasPorMes;
+      DADOS = r.dados;
+      BIMESTRES = r.bimestres;
+      DOCUMENTOS = r.documentos;
+
+      renderDocumentos();
+
+      const anos = Object.keys(DADOS).map(Number).sort((a, b) => b - a); // Do mais recente para o mais antigo
+      if (!anos.length) { // Aluno sem nenhum ano letivo cadastrado
+        faixaStatus.textContent = "Ainda não há notas ou faltas lançadas para você.";
+        return;
+      }
+      anos.forEach(a => {
+        const op = document.createElement("option");
+        op.value = a;
+        op.textContent = a;
+        seletorAno.appendChild(op);
+      });
+      ano = anos[0]; // Começa no ano mais recente
+      seletorAno.value = ano;
+
+      renderFrequencia();
+      renderNotas();
+      renderBimestres();
+      faixaStatus.remove(); // Tudo carregado: some o aviso
+    } catch (e) {
+      faixaStatus.className = "alert alert-danger";
+      faixaStatus.textContent = e.message;
+    }
+  }
+  iniciar();
 </script>
 
 <!-- Script do Bootstrap (componentes interativos) -->
