@@ -121,6 +121,9 @@
             class="btn btn-outline-secondary">Limpar</button>
         </div>
       </form>
+
+      <p class="text-center small mt-4 mb-0">Ainda não tem conta?
+        <a href="cadastro.html?tipo=professor" class="link-primary-custom">Cadastre-se</a></p>
     </div>
   </div>
 </main>
@@ -130,15 +133,10 @@
 </footer>
 
 <script src="api.js"></script>
-  
-  
-  
-  <script>
+<script>
   const form = document.getElementById("formLogin");
   const email = document.getElementById("email");
   const senha = document.getElementById("senha");
-const API_BASE_URL = "https://trab-nuvem.onrender.com";
-const LOGIN_ENDPOINT = `${API_BASE_URL}/api/auth/login`;
 
   // Valida os campos e acessa o sistema.
   form.addEventListener("submit", async evento => {
@@ -146,58 +144,29 @@ const LOGIN_ENDPOINT = `${API_BASE_URL}/api/auth/login`;
 
     const emailValido = email.checkValidity() && email.value.trim() !== "";
     const senhaValida = senha.value.trim() !== "";
-
     email.classList.toggle("is-invalid", !emailValido);
     senha.classList.toggle("is-invalid", !senhaValida);
-
     if (!emailValido || !senhaValida) return;
 
-    const erro = document.getElementById("erroLogin"); // Aviso de erro
+    const erro = document.getElementById("erroLogin");
     const botao = form.querySelector("button[type=submit]");
     const textoBotao = botao.textContent;
-    botao.disabled = true;               // Evita clique duplo enquanto a API responde
+    botao.disabled = true;
     botao.textContent = "Entrando...";
     erro.hidden = true;
 
     try {
-      // A conferência da senha é feita no servidor (API no Render + banco no AlwaysData).
-     // const r = await EduAPI.loginProfessor(email.value.trim(), senha.value);  ---  
-const resposta = await fetch(LOGIN_ENDPOINT, {
-    method: "POST",
-    headers: {
-        "Content-Type": "application/json",
-        "Accept": "application/json"
-    },
-    body: JSON.stringify({
-        email: email.value.trim(),
-        senha: senha.value
-    })
-});
-
-const r = await resposta.json();
-
-if (!resposta.ok) {
-    throw new Error(r.message || r.mensagem || "E-mail ou senha incorretos.");
-}
-
-if (!r.token || !r.professor) {
-    throw new Error("A API não retornou o token ou os dados do professor.");
-}
-
-sessionStorage.setItem("token", r.token);
-sessionStorage.setItem("professorLogado", JSON.stringify(r.professor));
-
-window.location.href = "painel-professor.html";
-      
-      sessionStorage.clear();                                                // Remove qualquer login anterior
-      sessionStorage.setItem("token", r.token);                              // Token JWT enviado nas próximas chamadas
+      // A conferência da senha é feita na API Node.js/Express (rota /api/auth/login/professor).
+      const r = await EduAPI.loginProfessor(email.value.trim(), senha.value);
+      sessionStorage.clear();                                                 // Remove qualquer login anterior
+      sessionStorage.setItem("token", r.token);                               // Token JWT enviado nas próximas chamadas
       sessionStorage.setItem("professorLogado", JSON.stringify(r.professor)); // { nome, email }
-      window.location.href = "painel-professor.html"; // Abre o painel do professor
+      window.location.href = "painel-professor.html";
     } catch (e) {
-      erro.textContent = e.message; // "E-mail ou senha incorretos." ou erro de conexão
+      erro.textContent = e.message;
       erro.hidden = false;
-      senha.value = "";    // Limpa a senha digitada
-      senha.focus();       // Coloca o cursor no campo de senha
+      senha.value = "";
+      senha.focus();
     } finally {
       botao.disabled = false;
       botao.textContent = textoBotao;
