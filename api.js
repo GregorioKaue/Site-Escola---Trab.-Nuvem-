@@ -1,9 +1,13 @@
 // Cliente da API para o frontend (GitHub Pages). Fica em  pages/api.js  e cada página o carrega
 // com uma tag script (src="api.js") colocada ANTES do script principal da própria página.
 
-// >>> TROQUE pelo endereço público do seu serviço no Render (sem barra no final). <<<
-// Exemplo: "https://educonnect-api.onrender.com"  (copie do topo da página do serviço no painel do Render)
-const API_URL = "https://SEU-SERVICO.onrender.com";
+// Endereço da API Node.js/Express.
+// - Em desenvolvimento (página aberta em localhost/127.0.0.1) usa o servidor local na porta 3000.
+// - Em produção (GitHub Pages) usa o endereço público do serviço no Render (sem barra no final).
+// >>> TROQUE a URL de produção abaixo pelo endereço real do seu serviço. <<<
+const API_LOCAL = "http://localhost:3000";
+const API_PRODUCAO = "https://SEU-SERVICO.onrender.com";
+const API_URL = ["localhost", "127.0.0.1"].includes(window.location.hostname) ? API_LOCAL : API_PRODUCAO;
 
 // Função base: faz a chamada HTTP, envia o token e trata os erros de forma única.
 async function api(caminho, { metodo = "GET", corpo } = {}) { // Recebe o caminho, o método e o corpo (opcional)
@@ -29,7 +33,7 @@ async function api(caminho, { metodo = "GET", corpo } = {}) { // Recebe o caminh
     sessionStorage.clear(); // Apaga a sessão antiga
     window.location.href = eProfessor ? "loginProf.html" : "login.html"; // Volta para a tela de login correta
   } // Fecha o if do 401
-  if (!resposta.ok) throw new Error(dados.erro || "Erro inesperado."); // Qualquer erro HTTP vira exceção com a mensagem da API
+  if (!resposta.ok) throw new Error(dados.erro || dados.mensagem || dados.message || "Erro inesperado."); // Qualquer erro HTTP vira exceção com a mensagem da API
   return dados; // Devolve os dados da resposta
 } // Fecha api()
 
@@ -82,6 +86,10 @@ const EduAPI = { // Objeto que agrupa todas as chamadas
   loginProfessor: (email, senha) => api("/api/auth/login/professor", { metodo: "POST", corpo: { email, senha } }), // loginProf.html
   esqueciSenha: (email, cpf) => api("/api/auth/esqueci-senha", { metodo: "POST", corpo: { email, cpf } }), // esqueci-senha.html
   redefinirSenha: (token, novaSenha) => api("/api/auth/redefinir-senha", { metodo: "POST", corpo: { token, novaSenha } }), // redefinir-senha.html
+
+  // Cadastro (cadastro.html): o servidor valida, grava a senha com hash (bcrypt) e rejeita e-mail/CPF repetidos
+  cadastrarAluno: dados => api("/api/auth/cadastro/aluno", { metodo: "POST", corpo: dados }), // { nome, email, cpf, turma, senha }
+  cadastrarProfessor: dados => api("/api/auth/cadastro/professor", { metodo: "POST", corpo: dados }), // { nome, email, cpf, disciplina, codigoEscola, senha }
 
   // Aluno
   perfil: () => api("/api/aluno/perfil"), // Cabeçalho do perfil (inclui foto)
