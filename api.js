@@ -11,7 +11,7 @@ const API_URL = ["localhost", "127.0.0.1"].includes(window.location.hostname) ? 
 
 // Função base: faz a chamada HTTP, envia o token e trata os erros de forma única.
 async function api(caminho, { metodo = "GET", corpo } = {}) { // Recebe o caminho, o método e o corpo (opcional)
-  if (API_URL.includes("SEU-SERVICO")) { // Esqueceu de configurar o endereço da API
+  if (API_URL.includes("https://trab-nuvem.onrender.com")) { // Esqueceu de configurar o endereço da API
     throw new Error("Configure API_URL em pages/api.js com o endereço do seu serviço no Render.");
   }
   const token = sessionStorage.getItem("token"); // Lê o token de login guardado na sessão do navegador
