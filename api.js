@@ -84,12 +84,12 @@ const EduAPI = { // Objeto que agrupa todas as chamadas
   // Autenticação
   loginAluno: (email, senha) => api("/api/auth/login/aluno", { metodo: "POST", corpo: { email, senha } }), // login.html
   loginProfessor: (email, senha) => api("/api/auth/login/professor", { metodo: "POST", corpo: { email, senha } }), // loginProf.html
-  esqueciSenha: (email, cpf) => api("/api/auth/esqueci-senha", { metodo: "POST", corpo: { email, cpf } }), // esqueci-senha.html
+  esqueciSenha: email => api("/api/auth/esqueci-senha", { metodo: "POST", corpo: { email } }), // esqueci-senha.html (só o e-mail; CPF não é mais exigido)
   redefinirSenha: (token, novaSenha) => api("/api/auth/redefinir-senha", { metodo: "POST", corpo: { token, novaSenha } }), // redefinir-senha.html
 
-  // Cadastro (cadastro.html): o servidor valida, grava a senha com hash (bcrypt) e rejeita e-mail/CPF repetidos
-  cadastrarAluno: dados => api("/api/auth/cadastro/aluno", { metodo: "POST", corpo: dados }), // { nome, email, cpf, turma, senha }
-  cadastrarProfessor: dados => api("/api/auth/cadastro/professor", { metodo: "POST", corpo: dados }), // { nome, email, cpf, disciplina, codigoEscola, senha }
+  // Cadastro (cadastro.html): o servidor valida, grava a senha com hash (bcrypt) e rejeita e-mail repetido. CPF e código da escola NÃO são mais exigidos
+  cadastrarAluno: dados => api("/api/auth/cadastro/aluno", { metodo: "POST", corpo: dados }), // { nome, email, turma, senha } (cpf é opcional)
+  cadastrarProfessor: dados => api("/api/auth/cadastro/professor", { metodo: "POST", corpo: dados }), // { nome, email, disciplina, senha } (cpf é opcional)
 
   // Aluno
   perfil: () => api("/api/aluno/perfil"), // Cabeçalho do perfil (inclui foto)
