@@ -6,7 +6,7 @@
 // - Em produção (GitHub Pages) usa o endereço público do serviço no Render (sem barra no final).
 // >>> TROQUE a URL de produção abaixo pelo endereço real do seu serviço. <<<
 const API_LOCAL = "http://localhost:3000";
-const API_PRODUCAO = "https://SEU-SERVICO.onrender.com";
+const API_PRODUCAO = "https://trab-nuvem.onrender.com";
 const API_URL = ["localhost", "127.0.0.1"].includes(window.location.hostname) ? API_LOCAL : API_PRODUCAO;
 
 // Função base: faz a chamada HTTP, envia o token e trata os erros de forma única.
